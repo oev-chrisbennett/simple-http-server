@@ -23,14 +23,13 @@ class HTTPServer:
     def handle_request(self, client_socket):
         with client_socket:
             request = client_socket.recv(1024).decode()
-            path, headers, body = self.parse_request(request)
-            response = self.create_response(path, headers, body)
+            method, path, headers, body = self.parse_request(request)
+            response = self.create_response(method, path, headers, body)
             client_socket.sendall(response)
 
     def parse_request(self, request):
         request_lines = request.splitlines()
-
-        path = request_lines[0].split()[1]
+        method, path, _ = request_lines[0].split()
         headers = {
             header.split(":")[0].strip(): header.split(":")[1].strip()
             for header in request_lines[1:]
@@ -41,13 +40,13 @@ class HTTPServer:
             if request_lines[-1] and ":" not in request_lines[-1]
             else None
         )
-        return path, headers, body
+        return method, path, headers, body
 
     def construct_response(self, status, content_type, body: str):
         headers = f"HTTP/1.1 {status}\r\nContent-Type: {content_type}\r\nContent-Length: {len(body)}\r\n\r\n"
         return (headers + body).encode()
 
-    def create_response(self, path, headers, body):
+    def create_response(self, method, path, headers, body):
         user_agent = headers.get("User-Agent")
 
         if path == "/":
@@ -58,19 +57,37 @@ class HTTPServer:
         elif path == "/user-agent":
             return self.construct_response("200 OK", "text/plain", user_agent)
         elif path.startswith("/files"):
-            file_path = os.path.join(self.directory, path.lstrip("/files/"))
-            try:
-                with open(file_path, "r") as file:
-                    return self.construct_response(
-                        "200 OK", "application/octet-stream", file.read()
-                    )
-            except FileNotFoundError:
-                return self.construct_response(
-                    "404 Not Found", "text/plain", f"{file_path} not found"
-                )
+            if method == "GET":
+                return self.handle_get_file(path, headers)
+            elif method == "POST":
+                return self.handle_post_file(path, headers, body)
         else:
             return self.construct_response(
                 "404 Not Found", "text/plain", f"{path} not found"
+            )
+
+    def handle_get_file(self, path, headers):
+        file_path = os.path.join(self.directory, path.lstrip("/files/"))
+        try:
+            with open(file_path, "r") as file:
+                return self.construct_response(
+                    "200 OK", "application/octet-stream", file.read()
+                )
+        except FileNotFoundError:
+            return self.construct_response(
+                "404 Not Found", "text/plain", f"{file_path} not found"
+            )
+
+    def handle_post_file(self, path, headers, body):
+        filename = path.lstrip("/files/")
+        file_path = os.path.join(self.directory, filename)
+        try:
+            with open(file_path, "wb") as file:
+                file.write(body.encode())
+            return self.construct_response("201 Created", "text/plain", "")
+        except Exception as e:
+            return self.construct_response(
+                "500 Internal Server Error", "text/plain", f"Error writing file - {e}"
             )
 
 
