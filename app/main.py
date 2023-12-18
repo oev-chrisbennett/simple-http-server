@@ -11,8 +11,16 @@ def main() -> None:
 
     first_line = request.split("\n")[0]
     method, path, protocol = first_line.split(" ")
-    response = b"HTTP/1.1 200 OK\r\n\r\n" if path == "/" else b"HTTP/1.1 404 Not Found\r\n\r\n"
-    print(f"Response: {response}")
+
+    if path == "/":
+        response = b"HTTP/1.1 200 OK\r\n\r\nHello, World!"
+    elif path.startswith("/echo"):
+        message = path.lstrip("/echo/")
+        headers = f"HTTP/1.1 200 O K\r\nContent-Type: text/plain\r\nContent-Length: {len(message)}\r\n\r\n"
+        response = (headers + message).encode()
+    else:
+        response = b"HTTP/1.1 404 Not Found\r\n\r\n"
+
     client_socket.sendall(response)
     client_socket.close()
 
