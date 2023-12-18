@@ -1,4 +1,5 @@
 import socket
+import threading
 
 
 class HTTPServer:
@@ -9,9 +10,12 @@ class HTTPServer:
     def start(self):
         with socket.create_server((self.host, self.port), reuse_port=True) as server:
             print(f"Server is running on port {self.port}")
-
-            client_socket, _ = server.accept()
-            self.handle_request(client_socket)
+            while True:
+                client_socket, _ = server.accept()
+                thread = threading.Thread(
+                    target=self.handle_request, args=(client_socket,), daemon=True
+                )
+                thread.start()
 
     def handle_request(self, client_socket):
         with client_socket:
