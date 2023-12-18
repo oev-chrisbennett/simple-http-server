@@ -1,11 +1,14 @@
+import os
 import socket
 import threading
+import argparse
 
 
 class HTTPServer:
-    def __init__(self, host="localhost", port=4221):
+    def __init__(self, host="localhost", port=4221, directory="."):
         self.host = host
         self.port = port
+        self.directory = directory
 
     def start(self):
         with socket.create_server((self.host, self.port), reuse_port=True) as server:
@@ -54,10 +57,28 @@ class HTTPServer:
             return self.construct_response("200 OK", "text/plain", message)
         elif path == "/user-agent":
             return self.construct_response("200 OK", "text/plain", user_agent)
+        elif path.startswith("/files"):
+            file_path = os.path.join(self.directory, path.lstrip("/files/"))
+            try:
+                with open(file_path, "r") as file:
+                    return self.construct_response(
+                        "200 OK", "application/octet-stream", file.read()
+                    )
+            except FileNotFoundError:
+                return self.construct_response(
+                    "404 Not Found", "text/plain", f"{file_path} not found"
+                )
         else:
-            return b"HTTP/1.1 404 Not Found\r\n\r\n"
+            return self.construct_response(
+                "404 Not Found", "text/plain", f"{path} not found"
+            )
 
 
 if __name__ == "__main__":
-    server = HTTPServer()
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--directory", default=".", help="The directory to serve files from"
+    )
+    args = parser.parse_args()
+    server = HTTPServer(directory=args.directory)
     server.start()
