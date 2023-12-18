@@ -1,29 +1,59 @@
 import socket
 
 
-def main() -> None:
-    print("Server is running on port 4221")
+class HTTPServer:
+    def __init__(self, host="localhost", port=4221):
+        self.host = host
+        self.port = port
 
-    server_socket = socket.create_server(("localhost", 4221), reuse_port=True)
-    client_socket, client_address = server_socket.accept()
+    def start(self):
+        with socket.create_server((self.host, self.port), reuse_port=True) as server:
+            print(f"Server is running on port {self.port}")
 
-    request = client_socket.recv(1024).decode()
+            client_socket, _ = server.accept()
+            self.handle_request(client_socket)
 
-    first_line = request.split("\n")[0]
-    method, path, protocol = first_line.split(" ")
+    def handle_request(self, client_socket):
+        with client_socket:
+            request = client_socket.recv(1024).decode()
+            path, headers, body = self.parse_request(request)
+            response = self.create_response(path, headers, body)
+            client_socket.sendall(response)
 
-    if path == "/":
-        response = b"HTTP/1.1 200 OK\r\n\r\nHello, World!"
-    elif path.startswith("/echo"):
-        message = path.lstrip("/echo/")
-        headers = f"HTTP/1.1 200 O K\r\nContent-Type: text/plain\r\nContent-Length: {len(message)}\r\n\r\n"
-        response = (headers + message).encode()
-    else:
-        response = b"HTTP/1.1 404 Not Found\r\n\r\n"
+    def parse_request(self, request):
+        request_lines = request.splitlines()
 
-    client_socket.sendall(response)
-    client_socket.close()
+        path = request_lines[0].split()[1]
+        headers = {
+            header.split(":")[0].strip(): header.split(":")[1].strip()
+            for header in request_lines[1:]
+            if ":" in header
+        }
+        body = (
+            request_lines[-1]
+            if request_lines[-1] and ":" not in request_lines[-1]
+            else None
+        )
+        return path, headers, body
+
+    def construct_response(self, status, content_type, body: str):
+        headers = f"HTTP/1.1 {status}\r\nContent-Type: {content_type}\r\nContent-Length: {len(body)}\r\n\r\n"
+        return (headers + body).encode()
+
+    def create_response(self, path, headers, body):
+        user_agent = headers.get("User-Agent")
+
+        if path == "/":
+            return self.construct_response("200 OK", "text/plain", "")
+        elif path and path.startswith("/echo"):
+            message = path.lstrip("/echo/")
+            return self.construct_response("200 OK", "text/plain", message)
+        elif path == "/user-agent":
+            return self.construct_response("200 OK", "text/plain", user_agent)
+        else:
+            return b"HTTP/1.1 404 Not Found\r\n\r\n"
 
 
 if __name__ == "__main__":
-    main()
+    server = HTTPServer()
+    server.start()
